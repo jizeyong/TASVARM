@@ -1,0 +1,17 @@
+numpy
+Pillow
+git+https://github.com/ildoonet/pytorch-randaugment
+git+https://github.com/PytorchLightning/metrics.git@master
+timm
+wget
+torch
+torcheval
+torchvision
+catalyst
+pytz
+transformers
+termcolor
+pandas
+dotmap
+thop
+

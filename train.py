@@ -1,0 +1,143 @@
+import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+import pprint
+import sys
+import argparse
+import torch
+import yaml
+import shutil
+import torchvision
+from dotmap import DotMap
+import torch.backends.cudnn as cudnn
+from utils.tools import fixed_random_seed,get_env_config,connect_path,get_format_time
+from utils.logger import setup_logger
+
+
+def main(args):
+    global best_prec
+    global fixed_time
+    fixed_time = get_format_time()
+
+    with open(args.config,'r') as f:
+        config = yaml.load(f,Loader=yaml.FullLoader)
+
+    # Obtain device environment parameters
+    env = get_env_config()
+
+    # Result output path:env path\results\[dataset name]\[current time]
+    working_dir = connect_path([
+        env['output_path'],config['data']['dataset'],config['iterate']['model'],
+        config['pretrain']['image_mode'],fixed_time
+    ])
+
+    # Read data path:
+    data_dir = connect_path([env['input_path'],config['data']['dataset']])
+
+
+    if not os.path.exists(data_dir):
+        raise IOError("The dataset is not exist")
+
+    if not os.path.exists(working_dir):
+        os.makedirs(working_dir)
+    shutil.copy(args.config, working_dir)
+
+
+    # 构建logger，打印环境和配置文件信息
+    logger = setup_logger(output=working_dir,distributed_rank=0,name=config['iterate']['model'])
+    logger.info("------------------------------------")
+    logger.info("Environment Versions:")
+    logger.info("- Python: {}".format(sys.version))
+    logger.info("- PyTorch: {}".format(torch.__version__))
+    logger.info("- TorchVison: {}".format(torchvision.__version__))
+    logger.info("------------------------------------")
+    pp = pprint.PrettyPrinter(indent=4)
+    logger.info(pp.pformat(config))
+    logger.info("------------------------------------")
+    logger.info("results path: {}".format(working_dir))
+    logger.info("data path: {}".format(data_dir))
+
+    # 将配置文件构造成映射操作类
+    config = DotMap(config)
+
+
+    device = "cpu"
+    if torch.cuda.is_available():
+        device = "cuda:"+str(args.gpu)
+        # cudnn.deterministic = True
+        # cudnn.benchmark = True
+    # Fixed random seed
+    fixed_random_seed(config.seed)
+
+    # Load data set
+    from dataload.datamanager import DataManager
+    manager = DataManager(config, data_dir)
+    class_list = list(manager.get_act_dict().keys())
+    num_classes = len(class_list)
+
+    # training data
+    train_transform = manager.get_transforms(mode='train')
+    train_loader = manager.get_data_loader(train_transform,mode='train')
+    logger.info("Train size:" + str(len(train_loader.dataset)))
+
+    # val or test data
+    val_transform = manager.get_transforms(mode='test')
+    val_loader = manager.get_data_loader(val_transform,mode='test')
+    logger.info("Test size:"+str(len(val_loader.dataset)))
+
+    # criterion or loss
+    import torch.nn as nn
+    if config.data.dataset in ['charades','animalkingdom']:
+        criterion = nn.BCEWithLogitsLoss()
+    elif config.data.dataset in ['hmdb51','ucf101','kinetics400']:
+        criterion = nn.CrossEntropyLoss()
+
+    # evaluation metric
+    if config.data.dataset in ['charades','animalkingdom']:
+        from torchmetrics.classification import MultilabelAveragePrecision
+        eval_metric = MultilabelAveragePrecision(num_labels=num_classes, average='micro')
+        eval_metric_string = 'Multilabel Average Precision'
+    elif config.data.dataset in ['hmdb51','ucf101','kinetics400']:
+        from torchmetrics.classification import MulticlassAccuracy
+        eval_metric = MulticlassAccuracy(num_classes=num_classes, average='micro')
+        eval_metric_string = 'Multiclass Accuracy'
+    else:
+        raise RuntimeError('Not metric was selected')
+    num_frames = config.iterate.total_length
+    model_args = (criterion, eval_metric, eval_metric_string, class_list, num_frames, working_dir,env['project_path'], device, config)
+
+
+    if config.iterate.model == 'CSGMARM':
+        from models.TASVARM import CSGMARM_Executor
+        executor = CSGMARM_Executor(*model_args)
+
+    if config.resume:
+        if os.path.isfile(config.resume):
+            logger.info("=> loading checkpoint '{}'".format(config.resume))
+            executor.load(config.resume)
+        else:
+            logger.info("=> no checkpoint found at '{}'".format(config.resume))
+    executor.run(train_loader,val_loader,logger)
+    logger.warning('Close log file: %s ' % (logger.name))
+    logger.handlers.clear()
+
+def get_parser():
+    parser = argparse.ArgumentParser(description="Training script for action recognition")
+    # parser.add_argument('--config', '-cfg', type=str, default='./configs/hmdb51/hmdb51_vitb16.yaml', help='global config file')
+    # parser.add_argument('--config', '-cfg', type=str, default='./configs/charades/charades_vitb16.yaml', help='global config file')
+    # parser.add_argument('--config', '-cfg', type=str, default='./configs/charades/charades_vitl14.yaml', help='global config file')
+    # parser.add_argument('--config', '-cfg', type=str, default='./configs/kinetics400/kinetics400_vitb16.yaml', help='global config file')
+    # parser.add_argument('--config', '-cfg', type=str, default='./configs/ucf101/ucf101_vitb16.yaml', help='global config file')
+    # parser.add_argument('--config', '-cfg', type=str, default='./configs/ucf101/ucf101_vitl14.yaml', help='global config file')
+    parser.add_argument('--config', '-cfg', type=str, default='./configs/animalkingdom/animalkingdom_vitl14.yaml', help='global config file')
+    # parser.add_argument('--config', '-cfg', type=str, default='./configs/animalkingdom/animalkingdom_vitb16.yaml', help='global config file')
+    parser.add_argument('--gpu',type=int,default=0,help='gpu id')
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    args = get_parser()
+    main(args)
+
+    # args.config = "./configs/charades/charades1.yaml"
+    # main(args)

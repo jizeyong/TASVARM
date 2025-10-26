@@ -1,0 +1,53 @@
+resume: null
+seed: 2024
+distributed: false
+expt:
+  zero: null # EP1 or EP2 or EP3 or seen
+  few: null # 2 4 8 16
+  ratio: 0.5 # 0.75
+  number: 10 # where zero == EP1
+prompt:
+  generate: "CLIP" # CLIP or QwenVL
+  top_k: 5 # when gererate is CLIP
+  mode: "ViT-B/16" # when gererate is CLIP
+data:
+  dataset: charades
+  num_workers: 0
+  train_mode: train
+  test_mode: test
+  sample: null # charades animalkingdom kinetics400
+  file_number: 3 # ucf101 hmdb51
+optimizer:
+  enable: true # use scheduler
+  lr: 0.00005   # 0.00003(ucf101 hmdb51) 0.00008(charades animalkingdom kinetics400)
+  T_0: 10
+  eta_min: 0.000001
+iterate:
+  model: CSGMARM
+  epoch: 100
+  start_epoch: 0
+  total_length: 32
+  batch_size: 32
+  max_interval: 20 # Maximum distance between the current epoch and the best epoch
+transformer:
+  num_layers: 4
+  num_heads: 8
+  attn_drop: 0.
+  proj_drop: 0.
+  drop_path: 0.1
+  dropout: 0.1
+pretrain:
+  image_mode: "ViT-B/16"
+  text_mode: "ViT-B/32"
+mixup:
+  enable: true
+  alpha: 0.5
+grad_clip:
+  enable: false
+  mode: "norm" # "norm" or "clip"
+  value: 1 #    1.0   or  0.5
+logging:
+  controls: true
+  print_freq: 50
+  eval_freq: 1
+
