@@ -42,6 +42,7 @@ Ji, Z., Zhang, J. (2026). A Video Action Recognition Model Guided by Temporal Ac
 
 
 ### BibTeX Format (Suitable for LaTeX)
+```bibtex
 @InProceedings{
     author    = {Ji, Zeyong and Zhang, Jinqu},
     editor    = {Yoshikawa, Masatoshi and Meng, Xiaofeng and Cao, Yang and Xiao, Chuan and Chen, Weitong and Wang, Yanda},
